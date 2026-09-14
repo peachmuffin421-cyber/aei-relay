@@ -11,7 +11,7 @@ export default {
     const symbol = url.searchParams.get("symbol") || "BTC-USD";
     const kind = url.searchParams.get("kind") || "price";
     const interval = url.searchParams.get("interval") || "1m";
-    const range = kind === "intraday" ? "2d" : "1d";
+    const range = kind === "intraday" || kind === "history" ? "2d" : "1d";
 
     const yahoo = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=${interval}&range=${range}`;
 
@@ -29,11 +29,19 @@ export default {
       });
     }
 
+    if (!upstream.ok) {
+        return new Response(JSON.stringify({ error: "upstream_http_error", status: upstream.status, statusText: upstream.statusText }), {
+            status: 502,
+            headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+        });
+    }
+
     const raw = await upstream.json();
 
     const result = raw?.chart?.result?.[0];
     if (!result) {
-      return new Response(JSON.stringify({ error: "no_data", symbol }), {
+      console.error("Yahoo no_data response:", JSON.stringify(raw));
+      return new Response(JSON.stringify({ error: "no_data", symbol, detail: raw?.chart?.error }), {
         status: 404,
         headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
       });
@@ -66,9 +74,12 @@ export default {
     } else if (kind === "history") {
       const limit = parseInt(url.searchParams.get("limit") || "200", 10);
       payload = [];
-      for (let i = Math.max(0, ts.length - limit); i < ts.length; i++) {
+      // Ensure we don't request more than available
+      const startIndex = Math.max(0, ts.length - limit);
+      for (let i = startIndex; i < ts.length; i++) {
         payload.push(shape(i));
       }
+      console.log(`History request: ${payload.length} bars returned for ${symbol}`);
     } else {
       return new Response(JSON.stringify({ error: "unknown_kind", kind }), {
         status: 400,
