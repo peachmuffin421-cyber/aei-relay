@@ -30,3 +30,8 @@ desktop.ini
 dist/
 build/
 *.log
+
+# --- Wrangler / Cloudflare Workers ------------------------------------------
+.wrangler/
+dist/
+.dev.vars
