@@ -1,167 +1,155 @@
-// Æea Relay Worker — v1.1 (PATCH-J: optional shared-secret gate)
-// Deploy via wrangler; set secret: wrangler secret put RELAY_KEY
-// If RELAY_KEY unset, gate is bypassed (backwards compatible).
+// ============================================================================
+// ÆEA RELAY — CLOUDFLARE WORKER
+// ============================================================================
+// Proxies Yahoo Finance chart API through Cloudflare's egress IPs so that
+// the Heroku dyno never exposes its own IP to Yahoo's rate limiter.
 //
-// Route contract:
-//   GET /health                                  → { ok, service, gated, region }
-//   GET /?symbol=<SYM>&kind=price                → { close, bid, ask, volume }
-//   GET /?symbol=<SYM>&kind=intraday&interval=1m → { open, high, low, close, volume, timestamp }
-//   GET /?symbol=<SYM>&kind=history&limit=200    → [ { open, high, low, close, volume, timestamp }, ... ]
+// Contract (mirrors FeedClient._get in app.py):
+//   GET /health                                    → {"ok": true, "service": "aei-relay"}
+//   GET /?symbol=<S>&kind=price                    → {close, bid, ask, volume}
+//   GET /?symbol=<S>&kind=intraday&interval=1m     → {open, high, low, close, volume, timestamp}
+//   GET /?symbol=<S>&kind=history&limit=200&interval=1m → [{open, high, low, close, volume, timestamp}, …]
+//
+// Optional shared-secret gate: if env.RELAY_KEY is set, every non-/health
+// request must carry header `X-Relay-Key: <RELAY_KEY>`.
+//
+// Deploy:
+//   npx wrangler deploy
+// ============================================================================
 
-const YAHOO_BASE = "https://query1.finance.yahoo.com/v8/finance/chart";
-const DEFAULT_SYMBOL = "BTC-USD";
-const DEFAULT_INTERVAL = "1m";
-const DEFAULT_LIMIT = 200;
-const MAX_LIMIT = 2000;
-const CACHE_TTL_SECONDS = 15;
+const YAHOO_HOST = "https://query1.finance.yahoo.com";
 const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0 Safari/537.36";
 
-function jsonResponse(payload, status = 200, extraHeaders = {}) {
-  return new Response(JSON.stringify(payload), {
+function json(body, status = 200, extraHeaders = {}) {
+  return new Response(JSON.stringify(body), {
     status,
     headers: {
       "Content-Type": "application/json; charset=utf-8",
       "Access-Control-Allow-Origin": "*",
-      "Cache-Control": `public, max-age=${CACHE_TTL_SECONDS}`,
+      "Access-Control-Allow-Methods": "GET, OPTIONS",
+      "Access-Control-Allow-Headers": "Content-Type, Accept, X-Relay-Key",
+      "Cache-Control": "public, max-age=15",
       ...extraHeaders,
     },
   });
 }
 
-function errorResponse(status, code, detail) {
-  return jsonResponse({ error: code, detail }, status);
-}
-
-function clampLimit(raw) {
-  const n = parseInt(raw || String(DEFAULT_LIMIT), 10);
-  if (!isFinite(n) || n <= 0) return DEFAULT_LIMIT;
-  return Math.min(n, MAX_LIMIT);
-}
-
-function shape(ts, q, i) {
+function shapeBar(quote, ts, i) {
+  const num = (v) => (v === null || v === undefined || Number.isNaN(v) ? null : Number(v));
+  const iso = ts && ts[i] ? new Date(ts[i] * 1000).toISOString() : new Date().toISOString();
   return {
-    open: q.open ? q.open[i] : null,
-    high: q.high ? q.high[i] : null,
-    low: q.low ? q.low[i] : null,
-    close: q.close ? q.close[i] : null,
-    volume: q.volume ? q.volume[i] : null,
-    timestamp: ts[i] ? new Date(ts[i] * 1000).toISOString() : new Date().toISOString(),
+    open: num(quote.open?.[i]),
+    high: num(quote.high?.[i]),
+    low: num(quote.low?.[i]),
+    close: num(quote.close?.[i]),
+    volume: num(quote.volume?.[i]),
+    timestamp: iso,
   };
-}
-
-async function fetchYahoo(symbol, interval, range) {
-  const url = `${YAHOO_BASE}/${encodeURIComponent(symbol)}?interval=${encodeURIComponent(interval)}&range=${encodeURIComponent(range)}`;
-  const upstream = await fetch(url, {
-    headers: { "User-Agent": UA, "Accept": "application/json" },
-  });
-  return upstream;
 }
 
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
 
-    // ── Health (ungated — audit requirement) ─────────────────────
-    if (url.pathname === "/health") {
-      const requiredKey = (env && env.RELAY_KEY) ? String(env.RELAY_KEY) : "";
-      return jsonResponse({
-        ok: true,
-        service: "aei-relay",
-        version: "1.1",
-        gated: !!requiredKey,
-        region: (request.cf && request.cf.colo) || "unknown",
-        ts: new Date().toISOString(),
+    if (request.method === "OPTIONS") {
+      return new Response(null, {
+        status: 204,
+        headers: {
+          "Access-Control-Allow-Origin": "*",
+          "Access-Control-Allow-Methods": "GET, OPTIONS",
+          "Access-Control-Allow-Headers": "Content-Type, Accept, X-Relay-Key",
+        },
       });
     }
 
-    // ── PATCH-J: optional shared-secret gate ─────────────────────
-    const requiredKey = (env && env.RELAY_KEY) ? String(env.RELAY_KEY) : "";
-    if (requiredKey) {
-      const provided = request.headers.get("X-Relay-Key")
-        || url.searchParams.get("key")
-        || "";
-      if (provided !== requiredKey) {
-        return errorResponse(401, "unauthorized", "missing or invalid X-Relay-Key");
+    if (url.pathname === "/health") {
+      return json({ ok: true, service: "aei-relay", gated: Boolean(env.RELAY_KEY) });
+    }
+
+    if (env.RELAY_KEY) {
+      const presented = request.headers.get("X-Relay-Key") || "";
+      if (presented !== env.RELAY_KEY) {
+        return json({ error: "unauthorized" }, 401);
       }
     }
 
-    // ── Parse query ──────────────────────────────────────────────
-    const symbol = url.searchParams.get("symbol") || DEFAULT_SYMBOL;
+    const symbol = url.searchParams.get("symbol") || "BTC-USD";
     const kind = url.searchParams.get("kind") || "price";
-    const interval = url.searchParams.get("interval") || DEFAULT_INTERVAL;
-    const range = kind === "intraday" ? "2d" : "1d";
+    const interval = url.searchParams.get("interval") || "1m";
+    const range = kind === "intraday" || kind === "history" ? "2d" : "1d";
 
-    // ── Upstream fetch with error handling ───────────────────────
-    let upstream;
+    const upstream = `${YAHOO_HOST}/v8/finance/chart/${encodeURIComponent(symbol)}?interval=${encodeURIComponent(interval)}&range=${range}`;
+
+    let response;
     try {
-      upstream = await fetchYahoo(symbol, interval, range);
+      response = await fetch(upstream, {
+        headers: { "User-Agent": UA, "Accept": "application/json" },
+        cf: { cacheTtl: 10, cacheEverything: true },
+      });
     } catch (e) {
-      return errorResponse(502, "upstream_failed", String(e));
+      return json({ error: "upstream_failed", detail: String(e), symbol }, 502);
     }
 
-    if (!upstream.ok) {
-      const isBlocked = upstream.status === 403 || upstream.status === 429;
-      return errorResponse(
-        isBlocked ? 403 : 502,
-        "upstream_blocked",
-        `Yahoo Finance rejected request (status=${upstream.status})`
-      );
+    if (!response.ok) {
+      return json({ error: "upstream_status", status: response.status, symbol }, 502);
     }
 
     let raw;
     try {
-      raw = await upstream.json();
+      raw = await response.json();
     } catch (e) {
-      return errorResponse(502, "invalid_json", "Upstream did not return valid JSON");
+      return json({ error: "upstream_invalid_json", detail: String(e), symbol }, 502);
     }
 
-    const result = raw && raw.chart && raw.chart.result && raw.chart.result[0];
+    const result = raw?.chart?.result?.[0];
     if (!result) {
-      return errorResponse(404, "no_data", `symbol=${symbol}`);
+      const yahooErr = raw?.chart?.error || null;
+      return json({ error: "no_data", symbol, yahoo_error: yahooErr }, 404);
     }
 
-    // ── Shape the payload by kind ────────────────────────────────
     const meta = result.meta || {};
     const ts = result.timestamp || [];
-    const q = (result.indicators && result.indicators.quote && result.indicators.quote[0]) || {};
+    const quote = (result.indicators && result.indicators.quote && result.indicators.quote[0]) || {};
 
     if (kind === "price") {
-      const last = shape(ts, q, ts.length - 1);
-      const price = meta.regularMarketPrice != null
-        ? meta.regularMarketPrice
-        : last.close;
-      return jsonResponse({
-        close: price,
-        bid: price,
-        ask: price,
+      const last = shapeBar(quote, ts, ts.length - 1);
+      const px = meta.regularMarketPrice ?? last.close;
+      if (px === null || px === undefined) {
+        return json({ error: "no_price", symbol }, 404);
+      }
+      return json({
+        symbol,
+        close: Number(px),
+        bid: Number(px),
+        ask: Number(px),
         volume: last.volume,
-        symbol: meta.symbol || symbol,
-        currency: meta.currency || "USD",
-        exchange: meta.exchangeName || null,
+        timestamp: last.timestamp,
       });
     }
 
     if (kind === "intraday") {
-      const last = shape(ts, q, ts.length - 1);
-      return jsonResponse({
-        ...last,
-        symbol: meta.symbol || symbol,
-        currency: meta.currency || "USD",
-      });
+      if (ts.length === 0) {
+        return json({ error: "no_intraday", symbol }, 404);
+      }
+      const last = shapeBar(quote, ts, ts.length - 1);
+      if (last.close === null) {
+        return json({ error: "no_intraday_close", symbol }, 404);
+      }
+      return json({ symbol, ...last });
     }
 
     if (kind === "history") {
-      const limit = clampLimit(url.searchParams.get("limit"));
-      const out = [];
+      const limit = Math.max(1, Math.min(1000, parseInt(url.searchParams.get("limit") || "200", 10) || 200));
       const start = Math.max(0, ts.length - limit);
+      const out = [];
       for (let i = start; i < ts.length; i++) {
-        const row = shape(ts, q, i);
-        if (row.close == null) continue;
-        out.push(row);
+        const bar = shapeBar(quote, ts, i);
+        if (bar.close === null) continue;
+        out.push(bar);
       }
-      return jsonResponse(out);
+      return json(out);
     }
 
-    return errorResponse(400, "unknown_kind", `kind=${kind}`);
+    return json({ error: "unknown_kind", kind }, 400);
   },
 };

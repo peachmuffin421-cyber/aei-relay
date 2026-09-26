@@ -1,24 +1,49 @@
 {
   "name": "aei-relay",
-  "version": "1.1.0",
+  "version": "1.0.0",
   "private": true,
-  "description": "Cloudflare Worker relay for the ÆEA Mini App — proxies Yahoo Finance through Cloudflare's edge to avoid Heroku egress rate-limits.",
+  "description": "ÆEA relay — Cloudflare Worker proxying Yahoo Finance for the Heroku ÆEA bridge.",
+  "author": "Natalia Tanyatia",
+  "license": "UNLICENSED",
+  "main": "worker.js",
   "type": "module",
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
-    "deploy:router": "wrangler deploy --config wrangler-router.toml",
     "tail": "wrangler tail",
-    "tail:router": "wrangler tail --config wrangler-router.toml",
-    "secret:key": "wrangler secret put RELAY_KEY",
-    "kv:create": "wrangler kv:namespace create RELAY_KV",
-    "kv:list": "wrangler kv:namespace list"
+    "secret:put": "wrangler secret put RELAY_KEY",
+    "secret:list": "wrangler secret list",
+    "whoami": "wrangler whoami",
+    "login": "wrangler login",
+    "logout": "wrangler logout",
+    "typecheck": "wrangler deploy --dry-run --outdir=dist"
   },
   "devDependencies": {
-    "wrangler": "^3.80.0"
+    "wrangler": "^3.90.0"
   },
   "engines": {
     "node": ">=18.0.0"
   },
-  "license": "UNLICENSED"
+  "cloudflare": {
+    "name": "aei-relay",
+    "main": "worker.js",
+    "compatibility_date": "2024-11-01"
+  },
+  "keywords": [
+    "cloudflare",
+    "workers",
+    "yahoo-finance",
+    "relay",
+    "proxy",
+    "aei",
+    "aeae"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yourusername/aea-bot"
+  },
+  "bugs": {
+    "url": "https://github.com/yourusername/aea-bot/issues"
+  },
+  "homepage": "https://github.com/yourusername/aea-bot#readme"
 }
