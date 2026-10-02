@@ -1,5 +1,6 @@
 // ============================================================================
 // ÆEA RELAY — CLOUDFLARE WORKER
+// Repository: aei-relay  (Repo C)
 // ============================================================================
 // Proxies Yahoo Finance chart API through Cloudflare's egress IPs so that
 // the Heroku dyno never exposes its own IP to Yahoo's rate limiter.

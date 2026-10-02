@@ -1,16 +1,18 @@
 # ============================================================================
 # ÆEA RELAY — WRANGLER CONFIGURATION
+# Repository: aei-relay  (Repo C)
 # ============================================================================
 # Cloudflare Worker deployment manifest.
 #
-# Usage:
-#   npm install -g wrangler        # or: npx wrangler
+# Usage (from the aei-relay/ repo root):
+#   npm install -g wrangler         # or: npx wrangler
 #   wrangler login
-#   wrangler secret put RELAY_KEY  # optional shared-secret gate
+#   wrangler secret put RELAY_KEY   # optional shared-secret gate
 #   wrangler deploy
 #
 # After deploy, the printed URL (e.g. https://aei-relay.<sub>.workers.dev)
-# is what you assign to the Heroku config var RELAY_URL.
+# is what you assign to the Heroku backend's RELAY_URL config var:
+#   heroku config:set RELAY_URL="https://aei-relay.<sub>.workers.dev" -a your-app-name
 # ============================================================================
 
 name = "aei-relay"
@@ -46,5 +48,5 @@ enabled = false
 #   { pattern = "relay.example.com/*", zone_name = "example.com" }
 # ]
 #
-# Then set the Heroku config var to match:
+# Then set the Heroku backend config var to match:
 #   heroku config:set RELAY_URL="https://relay.example.com" -a your-app-name

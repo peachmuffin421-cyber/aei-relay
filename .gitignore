@@ -1,0 +1,127 @@
+# ============================================================================
+# ÆEA RELAY — GITIGNORE
+# Repository: aei-relay  (Cloudflare Workers relay — Repo C)
+# Version: 4.1.0 (MQL4-Parity + MT4/TradingView TWA Edition — Audit-Patched)
+# ============================================================================
+# This repository contains the Cloudflare Worker that proxies Yahoo Finance
+# for the Heroku bridge. It is deployed independently via `wrangler deploy`.
+# It has no git relationship with aei-backend (Heroku) or aei-miniapp
+# (GitHub Pages).
+# ============================================================================
+# Secrets:
+#   • Production : set via `wrangler secret put RELAY_KEY` (encrypted by CF)
+#   • Local dev  : set via `.dev.vars`  (never committed — see below)
+# ============================================================================
+
+# ----------------------------------------------------------------------------
+# NODE — DEPENDENCIES & BUILD ARTIFACTS
+# ----------------------------------------------------------------------------
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.pnpm-store/
+package-lock.json.bak
+yarn.lock.bak
+pnpm-lock.yaml.bak
+dist/
+build/
+
+# ----------------------------------------------------------------------------
+# CLOUDFLARE WRANGLER
+# ----------------------------------------------------------------------------
+# Wrangler caches deployment metadata and local dev state under .wrangler/.
+.wrangler/
+.wrangler-*
+wrangler-dist/
+.wrangler.toml.bak
+
+# ----------------------------------------------------------------------------
+# CLOUDFLARE LOCAL SECRETS — CONTAINS SECRETS
+# ----------------------------------------------------------------------------
+# .dev.vars is Wrangler's local analog of .env. Never commit it.
+# The committed template is .dev.vars.example (allowlisted).
+.dev.vars
+.dev.vars.*
+!.dev.vars.example
+*.vars
+!*.vars.example
+
+# ----------------------------------------------------------------------------
+# ENVIRONMENT FRAGMENTS — DEFENSIVE EXCLUSION
+# ----------------------------------------------------------------------------
+# The relay uses .dev.vars, not .env. Excluded defensively so a stray .env
+# from another toolchain cannot slip in.
+.env
+.env.*
+!.env.example
+*.env
+!.env.example
+.envrc
+.local.env
+*.local
+*.local.*
+!*.local.example
+
+# ----------------------------------------------------------------------------
+# LOGS
+# ----------------------------------------------------------------------------
+*.log
+logs/
+*.log.*
+npm-debug.log
+yarn-error.log
+wrangler-tail.log
+
+# ----------------------------------------------------------------------------
+# OS / IDE DEBRIS
+# ----------------------------------------------------------------------------
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+*.bak
+*.tmp
+*.orig
+*.rej
+
+# ----------------------------------------------------------------------------
+# LOCAL SCRATCH
+# ----------------------------------------------------------------------------
+tmp/
+temp/
+scratch/
+sandbox/
+exports/
+
+# ----------------------------------------------------------------------------
+# TLS MATERIAL — IF A CUSTOM DOMAIN IS EVER USED WITH ORIGIN CERTS
+# ----------------------------------------------------------------------------
+*.pem
+*.key
+*.crt
+*.cer
+*.p12
+*.pfx
+certs/
+tls/
+private/
+!certs/.gitkeep
+
+# ----------------------------------------------------------------------------
+# ARCHIVES
+# ----------------------------------------------------------------------------
+*.tar
+*.tar.gz
+*.tgz
+*.zip
