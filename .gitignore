@@ -1,37 +1,167 @@
-# ─── Node ─────────────────────────────────────────────────────────────
-node_modules/
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-package-lock.json
-yarn.lock
-.pnpm-debug.log*
+# ============================================================================
+# ÆEA BACKEND — GITIGNORE
+# Repository: aei-backend  (Heroku backend — Repo B)
+# Version: 4.1.0 (MQL4-Parity + MT4/TradingView TWA Edition — Audit-Patched)
+# ============================================================================
+# This repository contains the Python backend that:
+#   • Runs the ÆEA MQL4-parity engine (app.py)
+#   • Serves the HTTP bridge (/miniapp-state, /ohlcv, /signals, /orders, ...)
+#   • Runs the Telegram bot (python-telegram-bot)
+# It does NOT contain any Cloudflare Worker code. The relay lives in
+# aei-relay (Repo C) and is deployed independently via `wrangler deploy`.
+# ============================================================================
 
-# ─── Wrangler / Cloudflare ────────────────────────────────────────────
-.wrangler/
-.dev.vars
+# ----------------------------------------------------------------------------
+# PYTHON — BYTECODE & CACHES
+# ----------------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.pyc
+*.pyo
+*.pyd
+
+# ----------------------------------------------------------------------------
+# PYTHON — BUILD ARTIFACTS
+# ----------------------------------------------------------------------------
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+pip-log.txt
+pip-delete-this-directory.txt
+
+# ----------------------------------------------------------------------------
+# VIRTUAL ENVIRONMENTS
+# ----------------------------------------------------------------------------
+.venv/
+venv/
+ENV/
+env/
+.venv*/
+venv*/
+ENV*/
+env*/
+virtualenv/
+.python-version
+
+# ----------------------------------------------------------------------------
+# ENVIRONMENT FILES — CONTAINS SECRETS
+# ----------------------------------------------------------------------------
+# .env holds TELEGRAM_BOT_TOKEN, RELAY_KEY, and other local-dev secrets.
+# Never commit it. The committed template is .env.example (allowlisted).
 .env
 .env.*
 !.env.example
+*.env
+!.env.example
+.envrc
+.local.env
+*.local
+*.local.*
+!*.local.example
 
-# ─── Editor ───────────────────────────────────────────────────────────
+# ----------------------------------------------------------------------------
+# HEROKU
+# ----------------------------------------------------------------------------
+.heroku/
+.heroku-*
+Procfile.local
+Procfile.*.local
+
+# ----------------------------------------------------------------------------
+# TLS MATERIAL — LOCAL BRIDGE ONLY
+# ----------------------------------------------------------------------------
+# Only relevant when BRIDGE_USE_TLS=1 with a self-provisioned PEM cert/key.
+# On Heroku, TLS is terminated at the router, so these are local-dev only.
+*.pem
+*.key
+*.crt
+*.cer
+*.p12
+*.pfx
+certs/
+tls/
+private/
+!certs/.gitkeep
+
+# ----------------------------------------------------------------------------
+# LOGS
+# ----------------------------------------------------------------------------
+*.log
+logs/
+*.log.*
+.npm/
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.cache/
+.mypy_cache/
+.ruff_cache/
+.hypothesis/
+
+# ----------------------------------------------------------------------------
+# OS / IDE DEBRIS
+# ----------------------------------------------------------------------------
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
+*.bak
+*.tmp
+*.orig
+*.rej
 
-# ─── OS ───────────────────────────────────────────────────────────────
-.DS_Store
-Thumbs.db
-desktop.ini
+# ----------------------------------------------------------------------------
+# LOCAL SCRATCH
+# ----------------------------------------------------------------------------
+tmp/
+temp/
+scratch/
+sandbox/
+*.local
+*.local.*
+!*.local.example
 
-# ─── Build artifacts ──────────────────────────────────────────────────
-dist/
-build/
-*.log
+# ----------------------------------------------------------------------------
+# SQLITE / LOCAL DB (in case of future local caching)
+# ----------------------------------------------------------------------------
+*.sqlite
+*.sqlite3
+*.db
+*.db-journal
 
-# --- Wrangler / Cloudflare Workers ------------------------------------------
-.wrangler/
-dist/
-.dev.vars
+# ----------------------------------------------------------------------------
+# ARCHIVES
+# ----------------------------------------------------------------------------
+*.tar
+*.tar.gz
+*.tgz
+*.zip
+*.whl
