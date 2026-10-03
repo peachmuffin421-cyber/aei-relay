@@ -44,10 +44,10 @@
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/yourusername/aei-relay"
+    "url": "https://github.com/yourusername/aea-bot"
   },
   "bugs": {
-    "url": "https://github.com/yourusername/aei-relay/issues"
+    "url": "https://github.com/yourusername/aea-bot/issues"
   },
-  "homepage": "https://github.com/yourusername/aei-relay#readme"
+  "homepage": "https://github.com/yourusername/aea-bot#readme"
 }

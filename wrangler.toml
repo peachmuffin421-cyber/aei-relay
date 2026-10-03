@@ -1,52 +1,21 @@
 # ============================================================================
-# ÆEA RELAY — WRANGLER CONFIGURATION
-# Repository: aei-relay  (Repo C)
+# ÆEA RELAY — WRANGLER CONFIGURATION (relay-only repo variant)
 # ============================================================================
-# Cloudflare Worker deployment manifest.
-#
-# Usage (from the aei-relay/ repo root):
-#   npm install -g wrangler         # or: npx wrangler
-#   wrangler login
-#   wrangler secret put RELAY_KEY   # optional shared-secret gate
-#   wrangler deploy
-#
-# After deploy, the printed URL (e.g. https://aei-relay.<sub>.workers.dev)
-# is what you assign to the Heroku backend's RELAY_URL config var:
-#   heroku config:set RELAY_URL="https://aei-relay.<sub>.workers.dev" -a your-app-name
+# Identical to aei-backend/wrangler.toml. Kept in sync via git subtree or
+# manual copy.
 # ============================================================================
 
 name = "aei-relay"
 main = "worker.js"
 compatibility_date = "2024-11-01"
 
-# Workers Free tier: 100,000 requests/day.
-# At UPDATE_INTERVAL=30s, one Heroku dyno burns ~2,880 relay hits/day for
-# the price poll alone, plus intraday + history on cold starts — well within
-# the free ceiling even with a handful of restart events.
-#
-# Observability: enable Workers Logs if you want per-request telemetry.
 [observability]
 enabled = false
 
-# ----------------------------------------------------------------------------
-# OPTIONAL — SHARED-SECRET GATE
-# ----------------------------------------------------------------------------
-# Do NOT inline the secret here. Set it once via:
+# Optional shared-secret gate:
 #   wrangler secret put RELAY_KEY
-# Wrangler stores it encrypted on Cloudflare's side and injects it as
-# env.RELAY_KEY inside worker.js. If absent, the gate is skipped.
 #
-# [vars]
-# RELAY_KEY = ""
-
-# ----------------------------------------------------------------------------
-# OPTIONAL — CUSTOM DOMAIN
-# ----------------------------------------------------------------------------
-# If you own a zone on Cloudflare, uncomment and replace with your hostname:
-#
+# Optional custom domain:
 # routes = [
 #   { pattern = "relay.example.com/*", zone_name = "example.com" }
 # ]
-#
-# Then set the Heroku backend config var to match:
-#   heroku config:set RELAY_URL="https://relay.example.com" -a your-app-name
