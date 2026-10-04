@@ -1,8 +1,25 @@
 // ============================================================================
-// ÆEA RELAY — CLOUDFLARE WORKER (relay-only repo variant)
+// ÆEA RELAY — CLOUDFLARE WORKER
 // ============================================================================
-// Identical to aei-backend/worker.js. Kept in sync via git subtree or
-// manual copy. Deploy with `wrangler deploy` from this repo root.
+// Proxies Yahoo Finance chart API through Cloudflare's egress IPs so that
+// the Heroku dyno never exposes its own IP to Yahoo's rate limiter.
+//
+// This file is the sole source of truth for the ÆEA relay. It is deployed
+// exclusively from the aei-relay repository. The aei-backend repository
+// does NOT contain a copy of this file — the backend reaches the relay
+// only over HTTP via the RELAY_URL environment variable.
+//
+// Contract (mirrors FeedClient._get in app.py):
+//   GET /health                                    → {"ok": true, "service": "aei-relay"}
+//   GET /?symbol=<S>&kind=price                    → {close, bid, ask, volume}
+//   GET /?symbol=<S>&kind=intraday&interval=1m     → {open, high, low, close, volume, timestamp}
+//   GET /?symbol=<S>&kind=history&limit=200&interval=1m → [{open, high, low, close, volume, timestamp}, …]
+//
+// Optional shared-secret gate: if env.RELAY_KEY is set, every non-/health
+// request must carry header `X-Relay-Key: <RELAY_KEY>`.
+//
+// Deploy:
+//   npx wrangler deploy
 // ============================================================================
 
 const YAHOO_HOST = "https://query1.finance.yahoo.com";

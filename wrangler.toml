@@ -1,21 +1,57 @@
 # ============================================================================
-# ÆEA RELAY — WRANGLER CONFIGURATION (relay-only repo variant)
+# ÆEA RELAY — WRANGLER CONFIGURATION
 # ============================================================================
-# Identical to aei-backend/wrangler.toml. Kept in sync via git subtree or
-# manual copy.
+# Cloudflare Worker deployment manifest.
+#
+# This is the ONLY wrangler.toml in the ÆEA system. It lives exclusively in
+# the aei-relay repository. The aei-backend repository does NOT contain a
+# copy. This guarantees:
+#   - exactly one `wrangler deploy` command can publish the Worker
+#   - the Worker name 'aei-relay' cannot collide with a second deployment
+#   - no deploy-order race can overwrite the live Worker with a stale copy
+#
+# Usage (from aei-relay/ repo root):
+#   npm install -g wrangler        # or: npx wrangler
+#   wrangler login
+#   wrangler secret put RELAY_KEY  # optional shared-secret gate
+#   wrangler deploy
+#
+# After deploy, the printed URL (e.g. https://aei-relay.<sub>.workers.dev)
+# is what you assign to the Heroku config var RELAY_URL.
 # ============================================================================
 
 name = "aei-relay"
 main = "worker.js"
 compatibility_date = "2024-11-01"
 
+# Workers Free tier: 100,000 requests/day.
+# At UPDATE_INTERVAL=30s, one Heroku dyno burns ~2,880 relay hits/day for
+# the price poll alone, plus intraday + history on cold starts — well within
+# the free ceiling even with a handful of restart events.
+#
+# Observability: enable Workers Logs if you want per-request telemetry.
 [observability]
 enabled = false
 
-# Optional shared-secret gate:
+# ----------------------------------------------------------------------------
+# OPTIONAL — SHARED-SECRET GATE
+# ----------------------------------------------------------------------------
+# Do NOT inline the secret here. Set it once via:
 #   wrangler secret put RELAY_KEY
+# Wrangler stores it encrypted on Cloudflare's side and injects it as
+# env.RELAY_KEY inside worker.js. If absent, the gate is skipped.
 #
-# Optional custom domain:
+# [vars]
+# RELAY_KEY = ""
+
+# ----------------------------------------------------------------------------
+# OPTIONAL — CUSTOM DOMAIN
+# ----------------------------------------------------------------------------
+# If you own a zone on Cloudflare, uncomment and replace with your hostname:
+#
 # routes = [
 #   { pattern = "relay.example.com/*", zone_name = "example.com" }
 # ]
+#
+# Then set the Heroku config var to match:
+#   heroku config:set RELAY_URL="https://relay.example.com" -a your-app-name
