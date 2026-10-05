@@ -1,6 +1,6 @@
 # ============================================================================
 # ÆEA RELAY — .gitignore
-# Version: 4.1.1 (MQL4-Parity + MT4/TradingView TWA Edition — Audit-Patched)
+# Version: 4.1.2 (Audit-Patched — Semantics-Restored Edition)
 # Repo: aei-relay (Cloudflare Workers)
 # ============================================================================
 #
@@ -22,8 +22,6 @@
 # ----------------------------------------------------------------------------
 # CLOUDFLARE WRANGLER
 # ----------------------------------------------------------------------------
-# Wrangler writes its build output to .wrangler/ and its typecheck output
-# to dist/. Neither should be committed.
 .wrangler/
 dist/
 worker/

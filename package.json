@@ -1,8 +1,8 @@
 {
   "name": "aei-relay",
-  "version": "4.1.1",
+  "version": "4.1.2",
   "private": true,
-  "description": "ÆEA relay — Cloudflare Worker proxying Yahoo Finance for the Heroku ÆEA bridge (MQL4-Parity + MT4/TradingView TWA Edition — Audit-Patched v4.1.1). Sole home of the Worker source.",
+  "description": "ÆEA relay — Cloudflare Worker proxying Yahoo Finance for the Heroku ÆEA bridge (MQL4-Parity + MT4/TradingView TWA Edition — Audit-Patched v4.1.2: Semantics-Restored). Sole home of the Worker source.",
   "author": "Natalia Tanyatia",
   "license": "UNLICENSED",
   "main": "worker.js",
@@ -42,7 +42,8 @@
     "tradingview",
     "twa",
     "bollinger",
-    "notifications"
+    "notifications",
+    "semantics-restored"
   ],
   "repository": {
     "type": "git",
