@@ -231,7 +231,7 @@ async function dispatchProvider(symbol, kind, interval, limit) {
     const isCrypto = Boolean(CRYPTO_MAP[symbol]);
     const errors = [];
     if (isCrypto) {
-        for (const fn of [fetchBinance, fetchCoinGecko, fetchYahoo]) {
+        for (const fn of [fetchCoinGecko, fetchBinance, fetchYahoo]) {
             try {
                 const r = await fn(symbol, kind, interval, limit);
                 return r;
