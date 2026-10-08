@@ -4,6 +4,11 @@
 // Proxies multiple free upstreams through Cloudflare's egress IPs so the
 // Heroku dyno never exposes its own IP to any rate limiter.
 //
+// v4.4.0 (Scroll-Ahead Edition):
+//   - Worker source is unchanged from v4.3.0. The v4.4.0 changes are all in
+//     the backend's projection trigger points and the frontend's
+//     scroll-ahead viewport. The version string is bumped for consistency.
+//
 // v4.3.0 (Enhancement Edition):
 //   - Adds a provider-dispatch layer with three upstream classes:
 //       * yahoo   — equities, ETFs, futures (default; volume often zero for crypto)
@@ -258,7 +263,7 @@ export default {
             });
         }
         if (url.pathname === "/health") {
-            return json({ ok: true, service: "aei-relay", version: "4.3.0", gated: Boolean(env.RELAY_KEY),
+            return json({ ok: true, service: "aei-relay", version: "4.4.0", gated: Boolean(env.RELAY_KEY),
                           providers: ["yahoo", "binance", "coingecko"] });
         }
         if (env.RELAY_KEY) {
