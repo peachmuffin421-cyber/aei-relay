@@ -18,6 +18,11 @@
 #
 # After deploy, the printed URL (e.g. https://aei-relay.<sub>.workers.dev)
 # is what you assign to the Heroku config var RELAY_URL.
+#
+# v4.3.0: the Worker now dispatches crypto symbols to Binance klines (real
+# OHLCV + volume) with CoinGecko fallback and Yahoo tertiary. Equities and
+# futures use Yahoo only. No wrangler.toml change is required for this;
+# the dispatch table lives inside worker.js.
 # ============================================================================
 
 name = "aei-relay"
@@ -26,8 +31,9 @@ compatibility_date = "2024-11-01"
 
 # Workers Free tier: 100,000 requests/day.
 # At UPDATE_INTERVAL=30s, one Heroku dyno burns ~2,880 relay hits/day for
-# the price poll alone, plus intraday + history on cold starts — well within
-# the free ceiling even with a handful of restart events.
+# the price poll alone, plus intraday + history + volume + projection
+# refresh on cold starts — well within the free ceiling even with a handful
+# of restart events.
 #
 # Observability: enable Workers Logs if you want per-request telemetry.
 [observability]
