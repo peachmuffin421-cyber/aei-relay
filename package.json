@@ -1,8 +1,8 @@
 {
   "name": "aei-relay",
-  "version": "4.5.0",
+  "version": "4.4.0",
   "private": true,
-  "description": "ÆEA relay — Cloudflare Worker proxying Yahoo Finance (equities/futures), Binance klines (crypto OHLCV + real volume), and CoinGecko market_chart (crypto secondary volume) for the Heroku ÆEA bridge (MQL4-Parity + MT4/TradingView TWA Edition — Codex-Symbolica v4.5.0). Sole home of the Worker source.",
+  "description": "ÆEA relay — Cloudflare Worker proxying Yahoo Finance (equities/futures), Binance klines (crypto OHLCV + real volume), and CoinGecko market_chart (crypto secondary volume) for the Heroku ÆEA bridge (MQL4-Parity + MT4/TradingView TWA Edition — Scroll-Ahead v4.4.0). Sole home of the Worker source.",
   "author": "Natalia Tanyatia",
   "license": "UNLICENSED",
   "main": "worker.js",
@@ -53,10 +53,7 @@
     "enhancement",
     "scroll-ahead",
     "execution-gated",
-    "reply-threaded",
-    "send-hardened",
-    "await-corrected",
-    "codex-symbolica"
+    "reply-threaded"
   ],
   "repository": {
     "type": "git",

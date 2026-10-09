@@ -19,9 +19,9 @@
 # After deploy, the printed URL (e.g. https://aei-relay.<sub>.workers.dev)
 # is what you assign to the Heroku config var RELAY_URL.
 #
-# v4.5.0: no wrangler.toml change. The Worker is unchanged from v4.4.2;
-# the v4.5.0 change is entirely in the backend's and frontend's user-visible
-# labels (Codex-Symbolica display substitution).
+# v4.4.0: no wrangler.toml change. The Worker is unchanged from v4.3.0;
+# the v4.4.0 changes are all in the backend's projection trigger points and
+# the frontend's scroll-ahead viewport.
 # ============================================================================
 
 name = "aei-relay"
