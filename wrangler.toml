@@ -19,9 +19,11 @@
 # After deploy, the printed URL (e.g. https://aei-relay.<sub>.workers.dev)
 # is what you assign to the Heroku config var RELAY_URL.
 #
-# v4.4.0: no wrangler.toml change. The Worker is unchanged from v4.3.0;
-# the v4.4.0 changes are all in the backend's projection trigger points and
-# the frontend's scroll-ahead viewport.
+# v4.5.0: no wrangler.toml change. The Worker gains Kraken as the primary
+# crypto provider and Stooq as the primary equities/futures provider, plus
+# the expanded CRYPTO_MAP and FUTURES_MAP tables, plus the D-49/D-50/D-51
+# parser fixes. None of those changes require a wrangler.toml edit. The
+# compatibility_date is unchanged.
 # ============================================================================
 
 name = "aei-relay"
@@ -33,6 +35,10 @@ compatibility_date = "2024-11-01"
 # the price poll alone, plus intraday + history + volume + projection
 # refresh on cold starts — well within the free ceiling even with a handful
 # of restart events.
+#
+# v4.5.0 note: Kraken's Ticker and OHLC endpoints are slightly faster to
+# respond than Binance's under typical Cloudflare egress, so the per-request
+# upstream latency is lower. The relay's own request count is unchanged.
 #
 # Observability: enable Workers Logs if you want per-request telemetry.
 [observability]
