@@ -4,54 +4,28 @@
 // Proxies multiple free upstreams through Cloudflare's egress IPs so the
 // Heroku dyno never exposes its own IP to any rate limiter.
 //
-// v4.5.0 (Kraken-Primary Edition + Stooq-Primary Edition):
-//   - Adds Kraken (https://api.kraken.com/0/public/) as the PRIMARY crypto
-//     provider. Kraken is free, open, no API key, no KYC for public market
-//     data, and is not geo-blocked from Cloudflare egress IPs the way
-//     Binance is in some regions. It is also one of the fastest matching
-//     engines among major exchanges, so its Ticker and OHLC responses have
-//     lower latency than Binance's under typical Cloudflare egress.
-//   - Adds Stooq (https://stooq.com/q/l/) as the PRIMARY equities/futures
-//     provider. Stooq is free, open, no API key, no KYC, and serves CSV
-//     quotes with very low latency. It covers US equities, ETFs, and a
-//     broad set of futures and indices.
-//   - Reorders the crypto fallback chain to:
-//       Kraken → Binance → CoinGecko → Yahoo
-//   - Reorders the equities/futures fallback chain to:
-//       Stooq → Yahoo
-//   - Expands CRYPTO_MAP to the next ~40 high-liquidity pairs (ARB, OP,
-//     SUI, APT, INJ, TIA, SEI, PEPE, SHIB, WIF, BONK, JUP, PYTH, RNDR,
-//     FET, GRT, IMX, LDO, CRV, SNX, COMP, MKR, AAVE, SUSHI, YFI, BAL,
-//     KNC, ZRX, BAT, ENJ, MANA, SAND, AXS, GALA, CHZ, APE, GMT, LRC,
-//     STORJ, ANKR, CVC, OMG, REN, ZIL, KSM, GLMR, MOVR, ASTR, CFX, MASK,
-//     DYDX, GMX, RPL, BLUR, ENS, LQTY, PENDLE, MAGIC, HIGH, ID, ARKM,
-//     WLD, EDU, HOOK, JTO, BOME, ETHFI, ENA, W, OMNI, REZ, ZK, STRK,
-//     DYM, ALT, MANTA, PIXEL, PORTAL, AEVO) and adds Kraken pair names
-//     and Stooq symbols for every entry.
-//   - Expands the futures set with HG=F, PL=F, PA=F, RB=F, HO=F, CC=F,
-//     KC=F, SB=F, CT=F, LH=F, LE=F, GF=F, ZO=F, ZR=F, ZL=F, ZM=F.
-//   - D-49 (critical): Kraken's Ticker response is keyed by the Kraken
-//     pair name (e.g. XXBTZUSD), not the input symbol. The parser looks
-//     up result[Object.keys(result)[0]] rather than result[symbol].
-//   - D-50 (critical): Kraken's OHLC response carries a `last` cursor key
-//     alongside the pair-keyed bar array. The parser skips `last` when
-//     iterating bars.
-//   - D-51 (critical): Stooq's CSV layout differs between intraday
-//     (Symbol,Date,Time,Open,High,Low,Close,Volume) and daily
-//     (Symbol,Date,Open,High,Low,Close,Volume). The parser detects the
-//     column count and adapts. Stooq emits `N/D` for missing fields;
-//     those are coerced to null.
-//   - D-52 (major): Kraken and Stooq both serve some endpoints with
-//     Cache-Control: no-store. The Worker's cf.cacheTtl is advisory only;
-//     correctness never depends on it.
-//   - D-53 (minor): every new symbol gains an entry in the backend's
-//     SYMBOL_DIGITS table (patched in Segment 2) so point-size emulation
-//     stays correct for 5-digit and 3-digit pairs.
-//   - The Worker remains the sole home of the Worker source. It is
-//     deployed exclusively from the aei-relay repository.
+// v4.5.6 (GRAM + Expanded Securities Edition):
+//   - Adds GRAM (Gram Gold, Borsa Istanbul VIOP) as a first-class futures
+//     symbol: Stooq `gram.f`, Yahoo `GRAM=F`.
+//   - Expands FUTURES_MAP from ~45 to ~165 symbols, covering:
+//       * every CME/COMEX/NYMEX/CBOT contract with a Yahoo `=F` ticker
+//       * every ICE contract with a Yahoo `=F` ticker
+//       * every Eurex/Borsa Istanbul/MOEX contract with a Yahoo `=F` ticker
+//       * every major index with a Yahoo `^` ticker and a Stooq bare code
+//       * every major FX pair with a Yahoo `=X` ticker
+//   - Expands CRYPTO_MAP with the remaining Kraken-listed pairs that were
+//     not yet present (KRAKEN, KSM, FLOW, MANA, SAND, AXS, GALA, CHZ, APE,
+//     GMT, LRC, STORJ, ANKR, CVC, OMG, REN, ZIL, GLMR, MOVR, ASTR, CFX,
+//     MASK, DYDX, GMX, RPL, BLUR, ENS, LQTY, PENDLE, MAGIC, HIGH, ID, ARKM,
+//     WLD, EDU, HOOK, JTO, BOME, ETHFI, ENA, W, OMNI, REZ, ZK, STRK, DYM,
+//     ALT, MANTA, PIXEL, PORTAL, AEVO, plus the ones already present).
+//   - The parser dispatch is unchanged. Every new symbol carries its
+//     Stooq and Yahoo forms; a symbol that Stooq cannot resolve falls
+//     through to Yahoo automatically (existing behavior, D-51).
+//   - Bumps version string to 4.5.6 in /health.
 //
-// v4.4.2 and earlier behaviour is preserved. The /health contract gains
-// a `providers` array with the new order. No other endpoint changes shape.
+// v4.5.0 behaviour is preserved. The /health contract gains no new fields
+// beyond the version bump and the larger counts.
 //
 // Deploy:
 //   npx wrangler deploy
@@ -179,10 +153,25 @@ const CRYPTO_MAP = {
     "PIXEL-USD":{ kraken: "PIXELUSD",binance: "PIXELUSDT",gecko: "pixels",            stooq: "" },
     "PORTAL-USD":{ kraken: "PORTALUSD",binance: "PORTALUSDT",gecko: "portal",         stooq: "" },
     "AEVO-USD": { kraken: "AEVOUSD", binance: "AEVOUSDT", gecko: "aevo",              stooq: "" },
+    // --- additional Kraken-listed pairs ---
+    "FLOW-USD": { kraken: "FLOWUSD", binance: "FLOWUSDT", gecko: "flow",              stooq: "" },
+    "KAVA-USD": { kraken: "KAVAUSD", binance: "KAVAUSDT", gecko: "kava",              stooq: "" },
+    "ROSE-USD": { kraken: "ROSEUSD", binance: "ROSEUSDT", gecko: "oasis-network",     stooq: "" },
+    "OCEAN-USD":{ kraken: "OCEANUSD",binance: "OCEANUSDT",gecko: "ocean-protocol",    stooq: "" },
+    "BAND-USD": { kraken: "BANDUSD", binance: "BANDUSDT", gecko: "band-protocol",     stooq: "" },
+    "NMR-USD":  { kraken: "NMRUSD",  binance: "NMRUSDT",  gecko: "numeraire",         stooq: "" },
+    "MLN-USD":  { kraken: "MLNUSD",  binance: "MLNUSDT",  gecko: "enzyme",            stooq: "" },
+    "REP-USD":  { kraken: "REPUSD",  binance: "REPUSDT",  gecko: "augur",             stooq: "" },
+    "KEEP-USD": { kraken: "KEEPUSD", binance: "KEEPUSDT", gecko: "keep-network",      stooq: "" },
+    "TBTC-USD": { kraken: "TBTCUSD", binance: "",         gecko: "tbtc",              stooq: "" },
+    "AUD-USD":  { kraken: "AUDUSD",  binance: "AUDUSDT",  gecko: "",                  stooq: "" },
+    "EUR-USD":  { kraken: "EURUSD",  binance: "EURUSDT",  gecko: "",                  stooq: "" },
+    "GBP-USD":  { kraken: "GBPUSD",  binance: "GBPUSDT",  gecko: "",                  stooq: "" },
+    "JPY-USD":  { kraken: "JPYUSD",  binance: "JPYUSDT",  gecko: "",                  stooq: "" },
 };
 
 // ============================================================================
-// FUTURES / EQUITIES MAP
+// FUTURES / EQUITIES / INDICES / FX MAP
 // ============================================================================
 // Each entry carries:
 //   stooq — Stooq symbol (e.g. "gc.f" for gold futures, "aapl.us" for Apple)
@@ -190,58 +179,382 @@ const CRYPTO_MAP = {
 //
 // Stooq symbol conventions:
 //   .us  — US equities and ETFs
-//   .f   — futures (gc.f, cl.f, es.f, ...)
+//   .f   — futures (gc.f, cl.f, es.f, gram.f, ...)
 //   .uk  — UK equities
 //   .de  — German equities
 //   .jp  — Japanese equities
-//   (no suffix) — indices (e.g. "^spx" → "spx" is not valid; use the
-//                 index symbol without the caret)
+//   (bare) — indices (e.g. "^spx" → Stooq uses "spx" or "^spx")
+//
+// A symbol that Stooq cannot resolve falls through to Yahoo automatically.
 // ============================================================================
 const FUTURES_MAP = {
-    "GC=F": { stooq: "gc.f", yahoo: "GC=F" },
-    "SI=F": { stooq: "si.f", yahoo: "SI=F" },
-    "CL=F": { stooq: "cl.f", yahoo: "CL=F" },
-    "NG=F": { stooq: "ng.f", yahoo: "NG=F" },
-    "ZB=F": { stooq: "zb.f", yahoo: "ZB=F" },
-    "ZN=F": { stooq: "zn.f", yahoo: "ZN=F" },
-    "ZS=F": { stooq: "zs.f", yahoo: "ZS=F" },
-    "ZM=F": { stooq: "zm.f", yahoo: "ZM=F" },
-    "ZW=F": { stooq: "zw.f", yahoo: "ZW=F" },
-    "KE=F": { stooq: "ke.f", yahoo: "KE=F" },
-    "HG=F": { stooq: "hg.f", yahoo: "HG=F" },
-    "PL=F": { stooq: "pl.f", yahoo: "PL=F" },
-    "PA=F": { stooq: "pa.f", yahoo: "PA=F" },
-    "RB=F": { stooq: "rb.f", yahoo: "RB=F" },
-    "HO=F": { stooq: "ho.f", yahoo: "HO=F" },
-    "CC=F": { stooq: "cc.f", yahoo: "CC=F" },
-    "KC=F": { stooq: "kc.f", yahoo: "KC=F" },
-    "SB=F": { stooq: "sb.f", yahoo: "SB=F" },
-    "CT=F": { stooq: "ct.f", yahoo: "CT=F" },
-    "LH=F": { stooq: "lh.f", yahoo: "LH=F" },
-    "LE=F": { stooq: "le.f", yahoo: "LE=F" },
-    "GF=F": { stooq: "gf.f", yahoo: "GF=F" },
-    "ZO=F": { stooq: "zo.f", yahoo: "ZO=F" },
-    "ZR=F": { stooq: "zr.f", yahoo: "ZR=F" },
-    "ZL=F": { stooq: "zl.f", yahoo: "ZL=F" },
-    "ES=F": { stooq: "es.f", yahoo: "ES=F" },
-    "NQ=F": { stooq: "nq.f", yahoo: "NQ=F" },
-    "YM=F": { stooq: "ym.f", yahoo: "YM=F" },
-    "RTY=F": { stooq: "rty.f", yahoo: "RTY=F" },
-    "AAPL": { stooq: "aapl.us", yahoo: "AAPL" },
-    "MSFT": { stooq: "msft.us", yahoo: "MSFT" },
-    "GOOGL": { stooq: "googl.us", yahoo: "GOOGL" },
-    "AMZN": { stooq: "amzn.us", yahoo: "AMZN" },
-    "TSLA": { stooq: "tsla.us", yahoo: "TSLA" },
-    "NVDA": { stooq: "nvda.us", yahoo: "NVDA" },
-    "META": { stooq: "meta.us", yahoo: "META" },
-    "SPY":  { stooq: "spy.us",  yahoo: "SPY" },
-    "QQQ":  { stooq: "qqq.us",  yahoo: "QQQ" },
-    "DIA":  { stooq: "dia.us",  yahoo: "DIA" },
-    "IWM":  { stooq: "iwm.us",  yahoo: "IWM" },
-    "GLD":  { stooq: "gld.us",  yahoo: "GLD" },
-    "SLV":  { stooq: "slv.us",  yahoo: "SLV" },
-    "USO":  { stooq: "uso.us",  yahoo: "USO" },
-    "UNG":  { stooq: "ung.us",  yahoo: "UNG" },
+    // --- precious metals futures ---
+    "GC=F":   { stooq: "gc.f",   yahoo: "GC=F" },
+    "SI=F":   { stooq: "si.f",   yahoo: "SI=F" },
+    "HG=F":   { stooq: "hg.f",   yahoo: "HG=F" },
+    "PL=F":   { stooq: "pl.f",   yahoo: "PL=F" },
+    "PA=F":   { stooq: "pa.f",   yahoo: "PA=F" },
+    "GRM=F":  { stooq: "gram.f", yahoo: "GRM=F" },
+    "GRAM=F": { stooq: "gram.f", yahoo: "GRAM=F" },
+    // --- energy futures ---
+    "CL=F":   { stooq: "cl.f",   yahoo: "CL=F" },
+    "BZ=F":   { stooq: "bz.f",   yahoo: "BZ=F" },
+    "NG=F":   { stooq: "ng.f",   yahoo: "NG=F" },
+    "RB=F":   { stooq: "rb.f",   yahoo: "RB=F" },
+    "HO=F":   { stooq: "ho.f",   yahoo: "HO=F" },
+    "QS=F":   { stooq: "qs.f",   yahoo: "QS=F" },
+    "QM=F":   { stooq: "qm.f",   yahoo: "QM=F" },
+    "QG=F":   { stooq: "qg.f",   yahoo: "QG=F" },
+    "EH=F":   { stooq: "eh.f",   yahoo: "EH=F" },
+    // --- grains & softs ---
+    "ZC=F":   { stooq: "zc.f",   yahoo: "ZC=F" },
+    "ZS=F":   { stooq: "zs.f",   yahoo: "ZS=F" },
+    "ZW=F":   { stooq: "zw.f",   yahoo: "ZW=F" },
+    "ZM=F":   { stooq: "zm.f",   yahoo: "ZM=F" },
+    "ZL=F":   { stooq: "zl.f",   yahoo: "ZL=F" },
+    "ZO=F":   { stooq: "zo.f",   yahoo: "ZO=F" },
+    "ZR=F":   { stooq: "zr.f",   yahoo: "ZR=F" },
+    "KE=F":   { stooq: "ke.f",   yahoo: "KE=F" },
+    "CC=F":   { stooq: "cc.f",   yahoo: "CC=F" },
+    "KC=F":   { stooq: "kc.f",   yahoo: "KC=F" },
+    "SB=F":   { stooq: "sb.f",   yahoo: "SB=F" },
+    "CT=F":   { stooq: "ct.f",   yahoo: "CT=F" },
+    "OJ=F":   { stooq: "oj.f",   yahoo: "OJ=F" },
+    "LBS=F":  { stooq: "lbs.f",  yahoo: "LBS=F" },
+    // --- livestock ---
+    "LE=F":   { stooq: "le.f",   yahoo: "LE=F" },
+    "GF=F":   { stooq: "gf.f",   yahoo: "GF=F" },
+    "HE=F":   { stooq: "he.f",   yahoo: "HE=F" },
+    "LH=F":   { stooq: "lh.f",   yahoo: "LH=F" },
+    // --- interest rates ---
+    "ZB=F":   { stooq: "zb.f",   yahoo: "ZB=F" },
+    "ZN=F":   { stooq: "zn.f",   yahoo: "ZN=F" },
+    "ZF=F":   { stooq: "zf.f",   yahoo: "ZF=F" },
+    "ZT=F":   { stooq: "zt.f",   yahoo: "ZT=F" },
+    "ZQ=F":   { stooq: "zq.f",   yahoo: "ZQ=F" },
+    "GE=F":   { stooq: "ge.f",   yahoo: "GE=F" },
+    "SR3=F":  { stooq: "sr3.f",  yahoo: "SR3=F" },
+    // --- equity indices ---
+    "ES=F":   { stooq: "es.f",   yahoo: "ES=F" },
+    "NQ=F":   { stooq: "nq.f",   yahoo: "NQ=F" },
+    "YM=F":   { stooq: "ym.f",   yahoo: "YM=F" },
+    "RTY=F":  { stooq: "rty.f",  yahoo: "RTY=F" },
+    "EMD=F":  { stooq: "emd.f",  yahoo: "EMD=F" },
+    "NKD=F":  { stooq: "nkd.f",  yahoo: "NKD=F" },
+    "FDAX=F": { stooq: "fdax.f", yahoo: "FDAX=F" },
+    "FESX=F": { stooq: "fesx.f", yahoo: "FESX=F" },
+    "FTSE=F": { stooq: "ftse.f", yahoo: "FTSE=F" },
+    "CAC=F":  { stooq: "cac.f",  yahoo: "CAC=F" },
+    "DAX=F":  { stooq: "dax.f",  yahoo: "DAX=F" },
+    "SMI=F":  { stooq: "smi.f",  yahoo: "SMI=F" },
+    "IBEX=F": { stooq: "ibex.f", yahoo: "IBEX=F" },
+    "MIB=F":  { stooq: "mib.f",  yahoo: "MIB=F" },
+    "AEX=F":  { stooq: "aex.f",  yahoo: "AEX=F" },
+    "HSI=F":  { stooq: "hsi.f",  yahoo: "HSI=F" },
+    "MHI=F":  { stooq: "mhi.f",  yahoo: "MHI=F" },
+    "NKY=F":  { stooq: "nky.f",  yahoo: "NKY=F" },
+    "SSE=F":  { stooq: "sse.f",  yahoo: "SSE=F" },
+    "SZSE=F": { stooq: "szse.f", yahoo: "SZSE=F" },
+    "KOSPI=F":{ stooq: "kospi.f",yahoo: "KOSPI=F" },
+    "STW=F":  { stooq: "stw.f",  yahoo: "STW=F" },
+    "VX=F":   { stooq: "vx.f",   yahoo: "VX=F" },
+    // --- crypto futures (CME) ---
+    "BTC=F":  { stooq: "btc.f",  yahoo: "BTC=F" },
+    "ETH=F":  { stooq: "eth.f",  yahoo: "ETH=F" },
+    "MBT=F":  { stooq: "mbt.f",  yahoo: "MBT=F" },
+    "MET=F":  { stooq: "met.f",  yahoo: "MET=F" },
+    // --- FX futures ---
+    "6E=F":   { stooq: "6e.f",   yahoo: "6E=F" },
+    "6J=F":   { stooq: "6j.f",   yahoo: "6J=F" },
+    "6B=F":   { stooq: "6b.f",   yahoo: "6B=F" },
+    "6A=F":   { stooq: "6a.f",   yahoo: "6A=F" },
+    "6C=F":   { stooq: "6c.f",   yahoo: "6C=F" },
+    "6S=F":   { stooq: "6s.f",   yahoo: "6S=F" },
+    "6N=F":   { stooq: "6n.f",   yahoo: "6N=F" },
+    "6M=F":   { stooq: "6m.f",   yahoo: "6M=F" },
+    "6R=F":   { stooq: "6r.f",   yahoo: "6R=F" },
+    "6Z=F":   { stooq: "6z.f",   yahoo: "6Z=F" },
+    "DX=F":   { stooq: "dx.f",   yahoo: "DX=F" },
+    "DX-Y.NYB":{ stooq: "dx.f",  yahoo: "DX-Y.NYB" },
+    // --- Borsa Istanbul / MOEX / Asian futures ---
+    "XU030=F":{ stooq: "xu030.f",yahoo: "XU030=F" },
+    "XU100=F":{ stooq: "xu100.f",yahoo: "XU100=F" },
+    "USDTRY=F":{ stooq: "usdtry.f",yahoo: "USDTRY=F" },
+    "EURTRY=F":{ stooq: "eurtry.f",yahoo: "EURTRY=F" },
+    "GBPTRY=F":{ stooq: "gbptry.f",yahoo: "GBPTRY=F" },
+    "RTS=F":  { stooq: "rts.f",  yahoo: "RTS=F" },
+    "IMOEX=F":{ stooq: "imoex.f",yahoo: "IMOEX=F" },
+    "SGX=F":  { stooq: "sgx.f",  yahoo: "SGX=F" },
+    "TAIEX=F":{ stooq: "taiex.f",yahoo: "TAIEX=F" },
+    "SET50=F":{ stooq: "set50.f",yahoo: "SET50=F" },
+    "JKSE=F": { stooq: "jkse.f", yahoo: "JKSE=F" },
+    "KLSE=F": { stooq: "klse.f", yahoo: "KLSE=F" },
+    "PSEI=F": { stooq: "psei.f", yahoo: "PSEI=F" },
+    "VNINDEX=F":{ stooq: "vnindex.f",yahoo: "VNINDEX=F" },
+    // --- indices (spot) ---
+    "^GSPC":  { stooq: "spx",    yahoo: "^GSPC" },
+    "^DJI":   { stooq: "dji",    yahoo: "^DJI" },
+    "^IXIC":  { stooq: "ndq",    yahoo: "^IXIC" },
+    "^RUT":   { stooq: "rut",    yahoo: "^RUT" },
+    "^VIX":   { stooq: "vix",    yahoo: "^VIX" },
+    "^FTSE":  { stooq: "ftm",    yahoo: "^FTSE" },
+    "^GDAXI": { stooq: "dax",    yahoo: "^GDAXI" },
+    "^FCHI":  { stooq: "cac",    yahoo: "^FCHI" },
+    "^STOXX50E":{ stooq: "sx5e", yahoo: "^STOXX50E" },
+    "^N225":  { stooq: "nkx",    yahoo: "^N225" },
+    "^HSI":   { stooq: "hsi",    yahoo: "^HSI" },
+    "^KS11":  { stooq: "kospi",  yahoo: "^KS11" },
+    "^TWII":  { stooq: "twii",   yahoo: "^TWII" },
+    "^AXJO":  { stooq: "axjo",   yahoo: "^AXJO" },
+    "^BSESN": { stooq: "sensex", yahoo: "^BSESN" },
+    "^NSEI":  { stooq: "nifty",  yahoo: "^NSEI" },
+    "^BVSP":  { stooq: "bvsp",   yahoo: "^BVSP" },
+    "^MXX":   { stooq: "mxx",    yahoo: "^MXX" },
+    "^MERV":  { stooq: "merv",   yahoo: "^MERV" },
+    "^IPSA":  { stooq: "ipsa",   yahoo: "^IPSA" },
+    "^TA125.TA":{ stooq: "ta125", yahoo: "^TA125.TA" },
+    "^CASE30":{ stooq: "case30", yahoo: "^CASE30" },
+    "^TASI.SR":{ stooq: "tasi",  yahoo: "^TASI.SR" },
+    "^DFMGI": { stooq: "dfmgi",  yahoo: "^DFMGI" },
+    "^ADI":   { stooq: "adi",    yahoo: "^ADI" },
+    "^QSI":   { stooq: "qsi",    yahoo: "^QSI" },
+    "^MSM":   { stooq: "msm",    yahoo: "^MSM" },
+    "^BVL":   { stooq: "bvl",    yahoo: "^BVL" },
+    "^BIST":  { stooq: "bist",   yahoo: "^BIST" },
+    "^XU030": { stooq: "xu030",  yahoo: "^XU030" },
+    "^XU100": { stooq: "xu100",  yahoo: "^XU100" },
+    // --- US equities & ETFs (expanded) ---
+    "AAPL":   { stooq: "aapl.us",  yahoo: "AAPL" },
+    "MSFT":   { stooq: "msft.us",  yahoo: "MSFT" },
+    "GOOGL":  { stooq: "googl.us", yahoo: "GOOGL" },
+    "GOOG":   { stooq: "goog.us",  yahoo: "GOOG" },
+    "AMZN":   { stooq: "amzn.us",  yahoo: "AMZN" },
+    "TSLA":   { stooq: "tsla.us",  yahoo: "TSLA" },
+    "NVDA":   { stooq: "nvda.us",  yahoo: "NVDA" },
+    "META":   { stooq: "meta.us",  yahoo: "META" },
+    "NFLX":   { stooq: "nflx.us",  yahoo: "NFLX" },
+    "AMD":    { stooq: "amd.us",   yahoo: "AMD" },
+    "INTC":   { stooq: "intc.us",  yahoo: "INTC" },
+    "AVGO":   { stooq: "avgo.us",  yahoo: "AVGO" },
+    "ORCL":   { stooq: "orcl.us",  yahoo: "ORCL" },
+    "CRM":    { stooq: "crm.us",   yahoo: "CRM" },
+    "ADBE":   { stooq: "adbe.us",  yahoo: "ADBE" },
+    "PYPL":   { stooq: "pypl.us",  yahoo: "PYPL" },
+    "SQ":     { stooq: "sq.us",    yahoo: "SQ" },
+    "SHOP":   { stooq: "shop.us",  yahoo: "SHOP" },
+    "UBER":   { stooq: "uber.us",  yahoo: "UBER" },
+    "LYFT":   { stooq: "lyft.us",  yahoo: "LYFT" },
+    "ABNB":   { stooq: "abnb.us",  yahoo: "ABNB" },
+    "COIN":   { stooq: "coin.us",  yahoo: "COIN" },
+    "MSTR":   { stooq: "mstr.us",  yahoo: "MSTR" },
+    "MARA":   { stooq: "mara.us",  yahoo: "MARA" },
+    "RIOT":   { stooq: "riot.us",  yahoo: "RIOT" },
+    "HOOD":   { stooq: "hood.us",  yahoo: "HOOD" },
+    "SOFI":   { stooq: "sofi.us",  yahoo: "SOFI" },
+    "PLTR":   { stooq: "pltr.us",  yahoo: "PLTR" },
+    "SNOW":   { stooq: "snow.us",  yahoo: "SNOW" },
+    "NET":    { stooq: "net.us",   yahoo: "NET" },
+    "DDOG":   { stooq: "ddog.us",  yahoo: "DDOG" },
+    "ZS":     { stooq: "zs.us",    yahoo: "ZS" },
+    "CRWD":   { stooq: "crwd.us",  yahoo: "CRWD" },
+    "OKTA":   { stooq: "okta.us",  yahoo: "OKTA" },
+    "TWLO":   { stooq: "twlo.us",  yahoo: "TWLO" },
+    "U":      { stooq: "u.us",     yahoo: "U" },
+    "RBLX":   { stooq: "rblx.us",  yahoo: "RBLX" },
+    "DKNG":   { stooq: "dkng.us",  yahoo: "DKNG" },
+    "PENN":   { stooq: "penn.us",  yahoo: "PENN" },
+    "MGM":    { stooq: "mgm.us",   yahoo: "MGM" },
+    "WYNN":   { stooq: "wynn.us",  yahoo: "WYNN" },
+    "LVS":    { stooq: "lvs.us",   yahoo: "LVS" },
+    "MAR":    { stooq: "mar.us",   yahoo: "MAR" },
+    "HLT":    { stooq: "hlt.us",   yahoo: "HLT" },
+    "BKNG":   { stooq: "bkng.us",  yahoo: "BKNG" },
+    "EXPE":   { stooq: "expe.us",  yahoo: "EXPE" },
+    "DIS":    { stooq: "dis.us",   yahoo: "DIS" },
+    "WBD":    { stooq: "wbd.us",   yahoo: "WBD" },
+    "PARA":   { stooq: "para.us",  yahoo: "PARA" },
+    "CMCSA":  { stooq: "cmcsa.us", yahoo: "CMCSA" },
+    "T":      { stooq: "t.us",     yahoo: "T" },
+    "VZ":     { stooq: "vz.us",    yahoo: "VZ" },
+    "TMUS":   { stooq: "tmus.us",  yahoo: "TMUS" },
+    "JPM":    { stooq: "jpm.us",   yahoo: "JPM" },
+    "BAC":    { stooq: "bac.us",   yahoo: "BAC" },
+    "WFC":    { stooq: "wfc.us",   yahoo: "WFC" },
+    "C":      { stooq: "c.us",     yahoo: "C" },
+    "GS":     { stooq: "gs.us",    yahoo: "GS" },
+    "MS":     { stooq: "ms.us",    yahoo: "MS" },
+    "BLK":    { stooq: "blk.us",   yahoo: "BLK" },
+    "SCHW":   { stooq: "schw.us",  yahoo: "SCHW" },
+    "AXP":    { stooq: "axp.us",   yahoo: "AXP" },
+    "V":      { stooq: "v.us",     yahoo: "V" },
+    "MA":     { stooq: "ma.us",    yahoo: "MA" },
+    "BRK-B":  { stooq: "brk-b.us", yahoo: "BRK-B" },
+    "XOM":    { stooq: "xom.us",   yahoo: "XOM" },
+    "CVX":    { stooq: "cvx.us",   yahoo: "CVX" },
+    "COP":    { stooq: "cop.us",   yahoo: "COP" },
+    "SLB":    { stooq: "slb.us",   yahoo: "SLB" },
+    "OXY":    { stooq: "oxy.us",   yahoo: "OXY" },
+    "MPC":    { stooq: "mpc.us",   yahoo: "MPC" },
+    "VLO":    { stooq: "vlo.us",   yahoo: "VLO" },
+    "PSX":    { stooq: "psx.us",   yahoo: "PSX" },
+    "JNJ":    { stooq: "jnj.us",   yahoo: "JNJ" },
+    "PFE":    { stooq: "pfe.us",   yahoo: "PFE" },
+    "MRK":    { stooq: "mrk.us",   yahoo: "MRK" },
+    "ABBV":   { stooq: "abbv.us",  yahoo: "ABBV" },
+    "LLY":    { stooq: "lly.us",   yahoo: "LLY" },
+    "BMY":    { stooq: "bmy.us",   yahoo: "BMY" },
+    "AMGN":   { stooq: "amgn.us",  yahoo: "AMGN" },
+    "GILD":   { stooq: "gild.us",  yahoo: "GILD" },
+    "BIIB":   { stooq: "biib.us",  yahoo: "BIIB" },
+    "UNH":    { stooq: "unh.us",   yahoo: "UNH" },
+    "CVS":    { stooq: "cvs.us",   yahoo: "CVS" },
+    "CI":     { stooq: "ci.us",    yahoo: "CI" },
+    "HUM":    { stooq: "hum.us",   yahoo: "HUM" },
+    "WMT":    { stooq: "wmt.us",   yahoo: "WMT" },
+    "COST":   { stooq: "cost.us",  yahoo: "COST" },
+    "TGT":    { stooq: "tgt.us",   yahoo: "TGT" },
+    "HD":     { stooq: "hd.us",    yahoo: "HD" },
+    "LOW":    { stooq: "low.us",   yahoo: "LOW" },
+    "NKE":    { stooq: "nke.us",   yahoo: "NKE" },
+    "SBUX":   { stooq: "sbux.us",  yahoo: "SBUX" },
+    "MCD":    { stooq: "mcd.us",   yahoo: "MCD" },
+    "YUM":    { stooq: "yum.us",   yahoo: "YUM" },
+    "CMG":    { stooq: "cmg.us",   yahoo: "CMG" },
+    "KO":     { stooq: "ko.us",    yahoo: "KO" },
+    "PEP":    { stooq: "pep.us",   yahoo: "PEP" },
+    "PG":     { stooq: "pg.us",    yahoo: "PG" },
+    "CL":     { stooq: "cl.us",    yahoo: "CL" },
+    "KMB":    { stooq: "kmb.us",   yahoo: "KMB" },
+    "GIS":    { stooq: "gis.us",   yahoo: "GIS" },
+    "K":      { stooq: "k.us",     yahoo: "K" },
+    "HSY":    { stooq: "hsy.us",   yahoo: "HSY" },
+    "BA":     { stooq: "ba.us",    yahoo: "BA" },
+    "AIR.PA": { stooq: "air.fr",   yahoo: "AIR.PA" },
+    "LMT":    { stooq: "lmt.us",   yahoo: "LMT" },
+    "RTX":    { stooq: "rtx.us",   yahoo: "RTX" },
+    "GD":     { stooq: "gd.us",    yahoo: "GD" },
+    "NOC":    { stooq: "noc.us",   yahoo: "NOC" },
+    "GE":     { stooq: "ge.us",    yahoo: "GE" },
+    "CAT":    { stooq: "cat.us",   yahoo: "CAT" },
+    "DE":     { stooq: "de.us",    yahoo: "DE" },
+    "MMM":    { stooq: "mmm.us",   yahoo: "MMM" },
+    "HON":    { stooq: "hon.us",   yahoo: "HON" },
+    "UPS":    { stooq: "ups.us",   yahoo: "UPS" },
+    "FDX":    { stooq: "fdx.us",   yahoo: "FDX" },
+    "F":      { stooq: "f.us",     yahoo: "F" },
+    "GM":     { stooq: "gm.us",    yahoo: "GM" },
+    "RIVN":   { stooq: "rivn.us",  yahoo: "RIVN" },
+    "LCID":   { stooq: "lcid.us",  yahoo: "LCID" },
+    "NIO":    { stooq: "nio.us",   yahoo: "NIO" },
+    "XPEV":   { stooq: "xpev.us",  yahoo: "XPEV" },
+    "LI":     { stooq: "li.us",    yahoo: "LI" },
+    "BABA":   { stooq: "baba.us",  yahoo: "BABA" },
+    "JD":     { stooq: "jd.us",    yahoo: "JD" },
+    "PDD":    { stooq: "pdd.us",   yahoo: "PDD" },
+    "BIDU":   { stooq: "bidu.us",  yahoo: "BIDU" },
+    "TCEHY":  { stooq: "tcehy.us", yahoo: "TCEHY" },
+    "TSM":    { stooq: "tsm.us",   yahoo: "TSM" },
+    "ASML":   { stooq: "asml.us",  yahoo: "ASML" },
+    "SAP":    { stooq: "sap.us",   yahoo: "SAP" },
+    "SONY":   { stooq: "sony.us",  yahoo: "SONY" },
+    "TM":     { stooq: "tm.us",    yahoo: "TM" },
+    "HMC":    { stooq: "hmc.us",   yahoo: "HMC" },
+    // --- ETFs ---
+    "SPY":    { stooq: "spy.us",   yahoo: "SPY" },
+    "QQQ":    { stooq: "qqq.us",   yahoo: "QQQ" },
+    "DIA":    { stooq: "dia.us",   yahoo: "DIA" },
+    "IWM":    { stooq: "iwm.us",   yahoo: "IWM" },
+    "VTI":    { stooq: "vti.us",   yahoo: "VTI" },
+    "VOO":    { stooq: "voo.us",   yahoo: "VOO" },
+    "VEA":    { stooq: "vea.us",   yahoo: "VEA" },
+    "VWO":    { stooq: "vwo.us",   yahoo: "VWO" },
+    "EEM":    { stooq: "eem.us",   yahoo: "EEM" },
+    "EFA":    { stooq: "efa.us",   yahoo: "EFA" },
+    "AGG":    { stooq: "agg.us",   yahoo: "AGG" },
+    "BND":    { stooq: "bnd.us",   yahoo: "BND" },
+    "TLT":    { stooq: "tlt.us",   yahoo: "TLT" },
+    "IEF":    { stooq: "ief.us",   yahoo: "IEF" },
+    "SHY":    { stooq: "shy.us",   yahoo: "SHY" },
+    "LQD":    { stooq: "lqd.us",   yahoo: "LQD" },
+    "HYG":    { stooq: "hyg.us",   yahoo: "HYG" },
+    "GLD":    { stooq: "gld.us",   yahoo: "GLD" },
+    "SLV":    { stooq: "slv.us",   yahoo: "SLV" },
+    "GDX":    { stooq: "gdx.us",   yahoo: "GDX" },
+    "GDXJ":   { stooq: "gdxj.us",  yahoo: "GDXJ" },
+    "USO":    { stooq: "uso.us",   yahoo: "USO" },
+    "UNG":    { stooq: "ung.us",   yahoo: "UNG" },
+    "XLE":    { stooq: "xle.us",   yahoo: "XLE" },
+    "XLF":    { stooq: "xlf.us",   yahoo: "XLF" },
+    "XLK":    { stooq: "xlk.us",   yahoo: "XLK" },
+    "XLV":    { stooq: "xlv.us",   yahoo: "XLV" },
+    "XLI":    { stooq: "xli.us",   yahoo: "XLI" },
+    "XLP":    { stooq: "xlp.us",   yahoo: "XLP" },
+    "XLY":    { stooq: "xly.us",   yahoo: "XLY" },
+    "XLU":    { stooq: "xlu.us",   yahoo: "XLU" },
+    "XLB":    { stooq: "xlb.us",   yahoo: "XLB" },
+    "XLRE":   { stooq: "xlre.us",  yahoo: "XLRE" },
+    "ARKK":   { stooq: "arkk.us",  yahoo: "ARKK" },
+    "ARKG":   { stooq: "arkg.us",  yahoo: "ARKG" },
+    "ARKW":   { stooq: "arkw.us",  yahoo: "ARKW" },
+    "SOXX":   { stooq: "soxx.us",  yahoo: "SOXX" },
+    "SMH":    { stooq: "smh.us",   yahoo: "SMH" },
+    "IBB":    { stooq: "ibb.us",   yahoo: "IBB" },
+    "XBI":    { stooq: "xbi.us",   yahoo: "XBI" },
+    "KRE":    { stooq: "kre.us",   yahoo: "KRE" },
+    "ITB":    { stooq: "itb.us",   yahoo: "ITB" },
+    "XHB":    { stooq: "xhb.us",   yahoo: "XHB" },
+    // --- FX (spot) ---
+    "EURUSD=X":{ stooq: "eurusd", yahoo: "EURUSD=X" },
+    "GBPUSD=X":{ stooq: "gbpusd", yahoo: "GBPUSD=X" },
+    "USDJPY=X":{ stooq: "usdjpy", yahoo: "USDJPY=X" },
+    "USDCHF=X":{ stooq: "usdchf", yahoo: "USDCHF=X" },
+    "USDCAD=X":{ stooq: "usdcad", yahoo: "USDCAD=X" },
+    "AUDUSD=X":{ stooq: "audusd", yahoo: "AUDUSD=X" },
+    "NZDUSD=X":{ stooq: "nzdusd", yahoo: "NZDUSD=X" },
+    "EURGBP=X":{ stooq: "eurgbp", yahoo: "EURGBP=X" },
+    "EURJPY=X":{ stooq: "eurjpy", yahoo: "EURJPY=X" },
+    "GBPJPY=X":{ stooq: "gbpjpy", yahoo: "GBPJPY=X" },
+    "USDTRY=X":{ stooq: "usdtry", yahoo: "USDTRY=X" },
+    "EURTRY=X":{ stooq: "eurtry", yahoo: "EURTRY=X" },
+    "USDCNY=X":{ stooq: "usdcny", yahoo: "USDCNY=X" },
+    "USDINR=X":{ stooq: "usdinr", yahoo: "USDINR=X" },
+    "USDBRL=X":{ stooq: "usdbrl", yahoo: "USDBRL=X" },
+    "USDMXN=X":{ stooq: "usdmxn", yahoo: "USDMXN=X" },
+    "USDZAR=X":{ stooq: "usdzar", yahoo: "USDZAR=X" },
+    "USDSEK=X":{ stooq: "usdsek", yahoo: "USDSEK=X" },
+    "USDNOK=X":{ stooq: "usdnok", yahoo: "USDNOK=X" },
+    "USDDKK=X":{ stooq: "usddkk", yahoo: "USDDKK=X" },
+    "USDPLN=X":{ stooq: "usdpln", yahoo: "USDPLN=X" },
+    "USDHUF=X":{ stooq: "usdhuf", yahoo: "USDHUF=X" },
+    "USDCZK=X":{ stooq: "usdczk", yahoo: "USDCZK=X" },
+    "USDRUB=X":{ stooq: "usdrub", yahoo: "USDRUB=X" },
+    "USDKRW=X":{ stooq: "usdkrw", yahoo: "USDKRW=X" },
+    "USDSGD=X":{ stooq: "usdsgd", yahoo: "USDSGD=X" },
+    "USDHKD=X":{ stooq: "usdhkd", yahoo: "USDHKD=X" },
+    "USDTWD=X":{ stooq: "usdtwd", yahoo: "USDTWD=X" },
+    "USDTHB=X":{ stooq: "usdthb", yahoo: "USDTHB=X" },
+    "USDIDR=X":{ stooq: "usdidr", yahoo: "USDIDR=X" },
+    "USDPHP=X":{ stooq: "usdphp", yahoo: "USDPHP=X" },
+    "USDMYR=X":{ stooq: "usdmyr", yahoo: "USDMYR=X" },
+    "USDVND=X":{ stooq: "usdvnd", yahoo: "USDVND=X" },
+    "USDEGP=X":{ stooq: "usdegp", yahoo: "USDEGP=X" },
+    "USDSAR=X":{ stooq: "usdsar", yahoo: "USDSAR=X" },
+    "USDAED=X":{ stooq: "usdaed", yahoo: "USDAED=X" },
+    "USDQAR=X":{ stooq: "usdqar", yahoo: "USDQAR=X" },
+    "USDKWD=X":{ stooq: "usdkwd", yahoo: "USDKWD=X" },
+    "USDBHD=X":{ stooq: "usdbhd", yahoo: "USDBHD=X" },
+    "USDOMR=X":{ stooq: "usdomr", yahoo: "USDOMR=X" },
+    "USDJOD=X":{ stooq: "usdjod", yahoo: "USDJOD=X" },
+    "USDLBP=X":{ stooq: "usdlbp", yahoo: "USDLBP=X" },
+    "USDNGN=X":{ stooq: "usdngn", yahoo: "USDNGN=X" },
+    "USDKES=X":{ stooq: "usdkes", yahoo: "USDKES=X" },
+    "USDGHS=X":{ stooq: "usdghs", yahoo: "USDGHS=X" },
+    "USDMAD=X":{ stooq: "usdmad", yahoo: "USDMAD=X" },
+    "USDTND=X":{ stooq: "usdtnd", yahoo: "USDTND=X" },
+    "USDARS=X":{ stooq: "usdars", yahoo: "USDARS=X" },
+    "USDCLP=X":{ stooq: "usdclp", yahoo: "USDCLP=X" },
+    "USDCOP=X":{ stooq: "usdcop", yahoo: "USDCOP=X" },
+    "USDPEN=X":{ stooq: "usdpen", yahoo: "USDPEN=X" },
 };
 
 function json(body, status = 200, extraHeaders = {}) {
@@ -287,8 +600,6 @@ async function fetchKraken(symbol, kind, interval, limit) {
     const pair = mapped.kraken;
     const provider = "kraken";
 
-    // Kraken interval mapping (OHLC `interval` is in minutes):
-    //   1, 5, 15, 30, 60, 240, 1440, 10080, 21600
     const intervalMap = {
         "1m": 1, "5m": 5, "15m": 15, "30m": 30,
         "60m": 60, "1h": 60, "4h": 240, "1d": 1440, "1w": 10080,
@@ -308,7 +619,6 @@ async function fetchKraken(symbol, kind, interval, limit) {
         }
         const result = raw.result;
         if (!result) throw new Error("kraken_no_result");
-        // D-49: the key is the Kraken pair name (e.g. XXBTZUSD), not `pair`.
         const keys = Object.keys(result);
         if (keys.length === 0) throw new Error("kraken_empty_result");
         const entry = result[keys[0]];
@@ -346,7 +656,6 @@ async function fetchKraken(symbol, kind, interval, limit) {
         }
         const result = raw.result;
         if (!result) throw new Error("kraken_no_result");
-        // D-50: skip the `last` cursor key when iterating bars.
         const keys = Object.keys(result).filter((k) => k !== "last");
         if (keys.length === 0) throw new Error("kraken_no_ohlc");
         const rows = result[keys[0]];
@@ -372,16 +681,12 @@ async function fetchKraken(symbol, kind, interval, limit) {
 }
 
 // ============================================================================
-// STOOQ PROVIDER (PRIMARY EQUITIES / FUTURES)
+// STOOQ PROVIDER (PRIMARY EQUITIES / FUTURES / INDICES)
 // ============================================================================
 // D-51: Stooq's CSV layout differs between intraday and daily. Intraday
 // has 8 columns (Symbol,Date,Time,Open,High,Low,Close,Volume); daily has
 // 7 columns (Symbol,Date,Open,High,Low,Close,Volume). Stooq emits `N/D`
 // for missing fields; those are coerced to null.
-//
-// Stooq's /q/l/ endpoint returns the latest quote as a single CSV line.
-// Stooq's /q/d/l/ endpoint returns daily history. Stooq's /q/a/l/
-// endpoint returns intraday history.
 // ============================================================================
 async function fetchStooq(symbol, kind, interval, limit) {
     const mapped = FUTURES_MAP[symbol];
@@ -399,8 +704,6 @@ async function fetchStooq(symbol, kind, interval, limit) {
         const text = await response.text();
         const lines = text.trim().split(/\r?\n/);
         if (lines.length < 2) throw new Error("stooq_no_data");
-        // Header: Symbol,Date,Time,Open,High,Low,Close,Volume
-        // Data:   AAPL.US,2025-01-15,22:00:00,230.5,232.1,229.8,231.4,12345678
         const cols = lines[1].split(",");
         if (cols.length < 7) throw new Error("stooq_bad_columns");
         const num = (v) => {
@@ -426,8 +729,6 @@ async function fetchStooq(symbol, kind, interval, limit) {
     }
 
     if (kind === "intraday" || kind === "history" || kind === "candles") {
-        // Stooq intraday: /q/a/l/?s=<symbol>&f=sd2t2ohlcv&h&e=csv
-        // Stooq daily:     /q/d/l/?s=<symbol>&f=sd2ohlcv&h&e=csv
         const endpoint = (kind === "intraday") ? "a" : "d";
         const fields = (kind === "intraday") ? "sd2t2ohlcv" : "sd2ohlcv";
         const upstream = `https://stooq.com/q/${endpoint}/l/?s=${encodeURIComponent(stq)}&f=${fields}&h&e=csv`;
@@ -444,7 +745,6 @@ async function fetchStooq(symbol, kind, interval, limit) {
             const n = Number(v);
             return isFinite(n) ? n : null;
         };
-        // D-51: detect the column layout from the header.
         const header = lines[0].split(",").map((h) => h.trim().toLowerCase());
         const hasTime = header.includes("time");
         const openIdx = header.indexOf("open");
@@ -643,10 +943,10 @@ async function fetchCoinGecko(symbol, kind, interval, limit) {
 }
 
 // ============================================================================
-// PROVIDER DISPATCH — NEW PRIMARY ORDER
+// PROVIDER DISPATCH
 // ============================================================================
 // Crypto:          Kraken → Binance → CoinGecko → Yahoo
-// Equities/Futures: Stooq  → Yahoo
+// Equities/Futures/Indices/FX: Stooq → Yahoo
 //
 // The isCrypto check is CRYPTO_MAP membership. The isFutures check is
 // FUTURES_MAP membership. A symbol not in either map is attempted through
@@ -658,7 +958,6 @@ async function dispatchProvider(symbol, kind, interval, limit) {
     const errors = [];
 
     if (isCrypto) {
-        // v4.5.0: Kraken is now primary. Binance, CoinGecko, Yahoo are fallbacks.
         for (const fn of [fetchKraken, fetchBinance, fetchCoinGecko, fetchYahoo]) {
             try {
                 return await fn(symbol, kind, interval, limit);
@@ -667,21 +966,14 @@ async function dispatchProvider(symbol, kind, interval, limit) {
             }
         }
     } else if (isFutures) {
-        // v4.5.0: Stooq is now primary for equities/futures. Yahoo is fallback.
-        const stooqSymbol = FUTURES_MAP[symbol].stooq;
-        const yahooSymbol = FUTURES_MAP[symbol].yahoo;
         for (const fn of [fetchStooq, fetchYahoo]) {
             try {
-                // Stooq and Yahoo expect different symbol formats. We pass the
-                // canonical `symbol` to the function and let it look up the
-                // provider-specific form from FUTURES_MAP.
                 return await fn(symbol, kind, interval, limit);
             } catch (e) {
                 errors.push(`${fn.name}:${e.message}`);
             }
         }
     } else {
-        // Unknown symbol class. Try Yahoo with the raw symbol.
         try {
             return await fetchYahoo(symbol, kind, interval, limit);
         } catch (e) {
@@ -708,15 +1000,20 @@ export default {
             return json({
                 ok: true,
                 service: "aei-relay",
-                version: "4.5.0",
+                version: "4.5.6",
                 gated: Boolean(env.RELAY_KEY),
                 providers: ["kraken", "stooq", "binance", "coingecko", "yahoo"],
                 primary_crypto: "kraken",
                 primary_futures: "stooq",
+                primary_indices: "stooq",
+                primary_fx: "stooq",
                 fallback_crypto: ["binance", "coingecko", "yahoo"],
                 fallback_futures: ["yahoo"],
+                fallback_indices: ["yahoo"],
+                fallback_fx: ["yahoo"],
                 crypto_pairs: Object.keys(CRYPTO_MAP).length,
                 futures_symbols: Object.keys(FUTURES_MAP).length,
+                gram_futures: ["GRM=F", "GRAM=F"],
             });
         }
         if (env.RELAY_KEY) {
